@@ -1,0 +1,20 @@
+ClassFinder {
+	classvar <allClasses;
+	classvar <classNames;
+	*initClass {
+		StartUp.add {
+			allClasses = Class.allClasses.select {|x, i| 
+				x.isMetaClass.not};
+			classNames = allClasses.collect {|x, i|
+				x.asString }
+		}
+	}
+	*namesBeginningWith {|str|
+		^classNames.select {|x, i|
+			x.beginsWith(str) }
+		}
+	*namesContaining {|str|
+		^classNames.select {|x, i|
+			x.contains(str) }
+		}
+}

@@ -1,0 +1,22 @@
+PitchQuantity : SimpleNumber {
+}
+
+QuantityMidi : PitchQuantity {
+    tomidi {
+        ^this;
+    }
+    tonote {
+        ^(this - 12).midinote;
+    }
+}
+
+QuantityFreq : Quantity {
+    tofreq {
+        ^this;
+    }
+    tonote {
+        ^(this.tomidi.tonote);
+    }
+}
+
+

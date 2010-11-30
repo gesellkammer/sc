@@ -1,0 +1,47 @@
+{\rtf1\ansi\ansicpg1252\cocoartf949\cocoasubrtf460
+{\fonttbl\f0\fnil\fcharset238 Inconsolata;\f1\fnil\fcharset0 Monaco;}
+{\colortbl;\red255\green255\blue255;\red0\green0\blue191;\red0\green0\blue0;\red96\green96\blue96;
+}
+\pard\tx560\tx1120\tx1680\tx2240\tx2800\tx3360\tx3920\tx4480\tx5040\tx5600\tx6160\tx6720\ql\qnatural\pardirnatural
+
+\f0\fs26 \cf2 ProxySpace\cf3 .push\
+(\cf4 "g6"\cf3 .notemidi - 0.5).midicps\
+\
+~pitches = [\
+\cf4 \
+~a = \{Mix.ar(\
+["\cf2 G6\cf4 ".notemidi - 0.5, \
+"\cf2 G6\cf4 ".notemidi,\
+"\cf2 C7\cf4 ".notemidi - 0.5,\
+"\cf2 B6\cf4 ".notemidi,\
+"\cf2 C\cf3 #7".notemidi,\
+\cf4 "D7"\cf3 .notemidi - 0.5,\
+\cf4 "D7"\cf3 .notemidi,\
+\cf4 "E6"\cf3 .notemidi,\
+\cf4 "E6"\cf3 .notemidi - 0.5,\
+\cf4 "G#5"\cf3 .notemidi,\
+\cf4 "A#5"\cf3 .notemidi,\
+\cf4 "F#7"\cf3 .notemidi,\
+\cf4 "D#8"\cf3 .notemidi\
+\
+].midicps.collect \{\cf2 |mi|\cf3  \cf2 SinOsc\cf3 .ar(mi) * 0.001\}\
+\
+)
+\f1 \}
+\f0 \
+~a.play\
+\
+s.options.inspect\
+#\
+\
+\cf2 thisProcess\cf3 .platform.\
+\
+~b = \{\cf2 SinOsc\cf3 .ar(
+\f1\fs20 \
+[ 761.67217368541, 783.9908719635, 1016.7103732476, 987.76660251225, 1108.7305239075, 1141.2188080929, 1174.6590716696, 659.25511382574, 640.48740045056, 415.30469757995, 466.16376151809, 1479.9776908465, 2489.0158697766 ])\}\
+\pard\tx560\tx1120\tx1680\tx2240\tx2800\tx3360\tx3920\tx4480\tx5040\tx5600\tx6160\tx6720\ql\qnatural\pardirnatural
+\cf2 Mix\cf3 .fill\
+\
+~b.play\
+(50..1000)\
+~a.play \{\cf2 SinOsc\cf3 .ar((50..200))\}}
