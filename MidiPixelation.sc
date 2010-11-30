@@ -5,7 +5,7 @@ MidiPixelation {
     var <running_status, osc_name;
     var <nfft, <trig_rate;
     var <id;
-    var <midi_processing_functions;
+    var <midi_funcs;
     classvar <synthdef_name = 'MidiPixelation';
     classvar <pr_maxid;
     classvar <freqs = #[
@@ -66,7 +66,20 @@ MidiPixelation {
             this.load_synthdef.();
         });
         running_status = 'STOPPED';
-        midi_processing_functions = [];
+        midi_funcs = List();
+        /*
+        amp_func = {|amps|
+            
+            88.do {|i|
+                var amp;
+                amp = amps[i];
+                amp = (amp * midi_gain * 127.0).clip(0, 127);
+                
+                
+            }
+            
+        }
+        */
         responder = OSCresponderNode(nil, osc_name, 
             {|time, responder, message|
                 var amp, noteoffs, midinote;           
@@ -98,7 +111,7 @@ MidiPixelation {
         );
     }
     load_synthdef {
-        SynthDef(this.class.synthdef_name) {|in_bus=0, trig_rate=1.5|
+        SynthDef(this.class.synthdef_name) {|in_bus=0, out_bus=0, trig_rate=1.5, post_gain=2, clip_high=0, i_nfft=8192|
             var freqs = #[25,
                           27.625     ,    29.26766798,    31.00801408,    32.85184655,
                           34.805319  ,    36.87495097,    39.06764966,    41.390733  ,
@@ -122,13 +135,13 @@ MidiPixelation {
                         2227.54041621,  2359.99686217,  2500.32957828,  2649.00691192,
                         2806.52505988,  2973.40972434,  3150.21786734,  3337.53956964,
                         3536.0       ,  3746.26150165,  3969.02580282,  4205.03635865, 4400];
-        	var fft_buf = LocalBuf(nfft);
-            var trig = Impulse.kr(SampleRate.ir/nfft * trig_rate);
+        	var fft_buf = LocalBuf(i_nfft);
+            var trig = Impulse.kr(SampleRate.ir/i_nfft * trig_rate);
         	var in = In.ar(in_bus); 
             var fft_data = FFT(fft_buf, in);
             var powers = FFTSubbandPower.kr(fft_data, freqs, 0);
-            SendReply.kr(trig, osc_name, powers, id);
-
+            powers = powers * post_gain;
+            Out.kr(out_bus, powers);
         }.send(server);
     }
     play {|in_bus=0, target, addAction=\addToTail|
@@ -170,7 +183,7 @@ MidiPixelation {
         }
     }
     register_midi_processing {|func|
-        // func should accept an array ... @todo
-        
+        // func should accept an array of size==88 and return a similar (or the same) array
+        midi_funcs.add(func)    
     }
 }
