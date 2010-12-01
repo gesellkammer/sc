@@ -4,10 +4,11 @@ MidiPixelation {
     var server, midiout, <>midi_gain, <>dur, <responder, <synth;
     var <running_status, osc_name;
     var <nfft, <trig_rate;
+    var <in_bus, <out_bus;
     var <id;
     var <midi_funcs;
-    classvar <synthdef_name = 'MidiPixelation';
     classvar <pr_maxid;
+    classvar <synthdef_name = 'MidiPixelation';
     classvar <freqs = #[
           27.625     ,    29.26766798,    31.00801408,    32.85184655,
           34.805319  ,    36.87495097,    39.06764966,    41.390733  ,
@@ -56,8 +57,7 @@ MidiPixelation {
         nfft = fftsize;
         trig_rate = update_rate;
         id = this.prGetId;
-        osc_name = '/edu/midipix'
-        //osc_name = '/midipix';
+        osc_name = '/edu/midipix';
         if( MIDIClient.initialized.not ) {
             MIDIClient.init;
         };
@@ -111,7 +111,7 @@ MidiPixelation {
         );
     }
     load_synthdef {
-        SynthDef(this.class.synthdef_name) {|in_bus=0, out_bus=0, post_gain=2, i_nfft=8192, freq0=30, freq1=4800|
+        SynthDef(this.class.synthdef_name) {|in_bus=0, out_bus=0, trig_rate=1.5, post_gain=2, i_nfft=8192, hop=0.25, freq0=30, freq1=4800|
             var freqs = #[25,
                           27.625     ,    29.26766798,    31.00801408,    32.85184655,
                           34.805319  ,    36.87495097,    39.06764966,    41.390733  ,
@@ -135,17 +135,21 @@ MidiPixelation {
                         2227.54041621,  2359.99686217,  2500.32957828,  2649.00691192,
                         2806.52505988,  2973.40972434,  3150.21786734,  3337.53956964,
                         3536.0       ,  3746.26150165,  3969.02580282,  4205.03635865, 4400];
+            var sr = SampleRate.ir;
+            var nyfreq = sr * 0.5;
         	var fft_buf = LocalBuf(i_nfft);
             var in = In.ar(in_bus); 
-            var thresh0 = freq0 / (SampleRate.ir * 0.5);
-            var thresh1 = -1 * (1 - (freq1 / (SampleRate.ir * 0.5)));
-            var fft_data = FFT(fft_buf, in)
+            var thresh0 = freq0 / nyfreq;
+            var thresh1 = -1 * (1 - (freq1 / nyfreq));
+            var trigger = Impulse.kr(sr/i_nfft * trig_rate);;
+            var fft_data = FFT(fft_buf, in, hop, wintype:1) // wintype = hann
                            | PV_BrickWall(_, thresh0)
                            | PV_BrickWall(_, thresh1)
                            ;
             var powers = FFTSubbandPower.kr(fft_data, freqs, 0);
             powers = powers * post_gain;
             Out.kr(out_bus, powers);
+            SendReply.kr(trigger, osc_name, powers, id);
         }.send(server);
     }
     play {|in_bus=0, target, addAction=\addToTail|
