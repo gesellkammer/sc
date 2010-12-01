@@ -141,7 +141,7 @@ MidiPixelation {
             var in = In.ar(in_bus); 
             var thresh0 = freq0 / nyfreq;
             var thresh1 = -1 * (1 - (freq1 / nyfreq));
-            var trigger = Impulse.kr(sr/i_nfft * trig_rate);;
+            var trigger = Impulse.kr(sr/i_nfft * trig_rate);
             var fft_data = FFT(fft_buf, in, hop, wintype:1) // wintype = hann
                            | PV_BrickWall(_, thresh0)
                            | PV_BrickWall(_, thresh1)
