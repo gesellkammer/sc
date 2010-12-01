@@ -67,49 +67,39 @@ MidiPixelation {
         });
         running_status = 'STOPPED';
         midi_funcs = List();
-        /*
-        amp_func = {|amps|
-            
-            88.do {|i|
-                var amp;
-                amp = amps[i];
-                amp = (amp * midi_gain * 127.0).clip(0, 127);
-                
-                
-            }
-            
-        }
-        */
+
+        // -----------------------------------------------------------
         responder = OSCresponderNode(nil, osc_name, 
             {|time, responder, message|
-                var amp, noteoffs, midinote;           
+                var amp, midinote, amps, noteoffs;           
                 if( message[2] == id ) {
-                    noteoffs = Array.new(88);
+                    noteoffs = Array(88);
+                    amps = message[4..91];
+                    midi_funcs.do {|func|
+                        amps = func.(amps);
+                    };
+                    amps = (amps * 127.0).clip(0, 127);
                     fork {
-                        88.do {|i| 
+                        88.do {|i|
                             midinote = midinotes[i];
-                            amp = (message[i+4] * midi_gain * 127.0).clip(0, 127);
+                            amp = amps[i];
                             if( amp > 0 ) {
                                 midiout.noteOn(0, midinote, amp);
-                                noteoffs.add(midinote) 
+                                noteoffs.add(midinote);
                             };
                         };
                     };
-
                     fork {
                         dur.wait;
-                        if( noteoffs.size > 0 ) {
-                            noteoffs.do {|elem, i|
-                                midiout.noteOff(0, elem, 0)
-                            };
+                        noteoffs.do {|note|
+                                midiout.noteOff(0, note, 0)
                         };
                     };
                 };
-                
-
             }
         );
-    }
+    } 
+    // ----------------------------------------------------------------
     load_synthdef {
         SynthDef(this.class.synthdef_name) {|in_bus=0, out_bus=0, trig_rate=1.5, post_gain=2, i_nfft=8192, hop=0.25, freq0=30, freq1=4800|
             var freqs = #[25,
