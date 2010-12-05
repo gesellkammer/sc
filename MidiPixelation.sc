@@ -6,10 +6,12 @@ MidiPixelation {
     var <nfft, <trig_rate;
     var <in_bus, <out_bus;
     var <id;
-    var <midi_funcs;
-    classvar <pr_maxid;
+    var <post_funcs;
+    classvar <>pr_maxid = 0;
     classvar <synthdef_name = 'MidiPixelation';
-    classvar <freqs = #[
+    classvar <>synthdef_loaded = false;
+    classvar <default_server;
+    classvar <piano_freqs = #[
           27.625     ,    29.26766798,    31.00801408,    32.85184655,
           34.805319  ,    36.87495097,    39.06764966,    41.390733  ,
           43.85195406,    46.45952694,    49.22215418,    52.14905578,
@@ -32,13 +34,19 @@ MidiPixelation {
         2227.54041621,  2359.99686217,  2500.32957828,  2649.00691192,
         2806.52505988,  2973.40972434,  3150.21786734,  3337.53956964,
         3536.0       ,  3746.26150165,  3969.02580282,  4205.03635865, 4400];
-    
+
     *new {|fftsize=8192, update_rate=1.5, note_dur=0.1, gain=2|
         ^super.new.init(fftsize, update_rate, note_dur, gain);
     }
     *initClass {
-        midinotes = freqs.collect {|freq| freq.cpsmidi};
-        pr_maxid = 0;
+        midinotes = piano_freqs.collect {|freq| freq.cpsmidi};
+        default_server = Server.local;
+        StartUp.add {
+            if( default_server.serverRunning ) {
+                this.load_synthdef.();
+                synthdef_loaded = true;
+            };
+        }
     } 
     prGetId {
         var newid = this.class.pr_maxid;
@@ -50,58 +58,65 @@ MidiPixelation {
         
     }
     init {|fftsize=8192, update_rate=1.5, note_dur=0.1, gain=2|
-        server = Server.local;
+        server    = default_server;
         midi_gain = gain;
-        dur = note_dur;
-        
-        nfft = fftsize;
+        dur       = note_dur;
+        nfft      = fftsize;
         trig_rate = update_rate;
-        id = this.prGetId;
-        osc_name = '/edu/midipix';
+        id        = this.prGetId;
+        osc_name  = '/edu/midipix';
+
         if( MIDIClient.initialized.not ) {
             MIDIClient.init;
         };
         midiout = MIDIOut(0);
-        server.doWhenBooted({
-            this.load_synthdef.();
-        });
+        if( synthdef_loaded.not ) {
+            server.doWhenBooted({
+                this.load_synthdef.();
+            });
+        };
         running_status = 'STOPPED';
-        midi_funcs = List();
+        post_funcs     = List();
+        CmdPeriod.add({this.free});
 
         // -----------------------------------------------------------
         responder = OSCresponderNode(nil, osc_name, 
             {|time, responder, message|
-                var amp, midinote, amps, noteoffs;           
+                var amp, midinote, amps, noteoffs, new_midinotes;           
                 if( message[2] == id ) {
                     noteoffs = Array(88);
                     amps = message[4..91];
-                    midi_funcs.do {|func|
-                        amps = func.(amps);
+                    new_midinotes = midinotes;
+                    post_funcs.do {|func|
+                        #new_midinotes, amps = func.(new_midinotes, amps);
                     };
-                    amps = (amps * 127.0).clip(0, 127);
-                    fork {
-                        88.do {|i|
-                            midinote = midinotes[i];
-                            amp = amps[i];
+                    amps = (amps * (127.0 * midi_gain)).clip(0, 127); // this could also be a post_func 
+                    // fork {
+                        (amps.size - 1).do {|i|
+                            amp = amps[i].floor;
                             if( amp > 0 ) {
+                                midinote = new_midinotes[i];
                                 midiout.noteOn(0, midinote, amp);
                                 noteoffs.add(midinote);
                             };
                         };
+                    //};
+                    if( noteoffs.size > 0 ) {
+                        fork {
+                            dur.wait;
+                            noteoffs.do {|note|
+                                    midiout.noteOff(0, note, 0)
+                            };
+                        };    
                     };
-                    fork {
-                        dur.wait;
-                        noteoffs.do {|note|
-                                midiout.noteOff(0, note, 0)
-                        };
-                    };
+                    
                 };
             }
         );
     } 
     // ----------------------------------------------------------------
     load_synthdef {
-        SynthDef(this.class.synthdef_name) {|in_bus=0, out_bus=0, trig_rate=1.5, post_gain=2, i_nfft=8192, hop=0.25, freq0=30, freq1=4800|
+        SynthDef(this.class.synthdef_name) {|in_bus=0, out_bus=0, trig_rate=1.5, post_gain=2, i_nfft=8192, hop=1/8, freq0=30, freq1=4800|
             var freqs = #[25,
                           27.625     ,    29.26766798,    31.00801408,    32.85184655,
                           34.805319  ,    36.87495097,    39.06764966,    41.390733  ,
@@ -146,13 +161,14 @@ MidiPixelation {
         // NumOutputBuses.ir + 0 is the same as SoundIn.ar(0)
         switch( running_status,
             'PAUSED', {
-                this.synth.run(1);
                 running_status = 'PLAYING';
+                this.synth.run(1);
             },  
             'STOPPED', {
+                
+                running_status = 'PLAYING';
                 responder.add;
                 synth = Synth(this.class.synthdef_name, args:['in_bus', in_bus, 'trig_rate', trig_rate], target:target, addAction:addAction);
-                running_status = 'PLAYING';
             },
             'PLAYING', {
                 'already playing'.postln;
@@ -180,8 +196,14 @@ MidiPixelation {
             midiout.noteOff(0, 60, 0);
         }
     }
-    register_midi_processing {|func|
-        // func should accept an array of size==88 and return a similar (or the same) array
-        midi_funcs.add(func)    
+    register_post_processing {|func|
+        /*
+        func should have the prototype func {|midinotes, amps| ... } where:
+        amps      = the amplitude (between 0 and 1) of each note
+        midinotes = the midi note-number corresponding to each amp
+        
+        it should return an array [amps, midinotes] with the desired midifications
+        */ 
+        post_funcs.add(func)    
     }
 }
