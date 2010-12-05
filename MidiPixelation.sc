@@ -10,7 +10,7 @@ MidiPixelation {
     var <in_bus_env = -1;
     var <numkeys = 88;
     var <>group;
-    var <>bus;
+    var <>bus_powers;
     classvar <>pr_maxid = 0;
     classvar <synthdef_name = 'MidiPixelation';
     classvar <synthdef_analysis = 'MidiPix_ANALISIS';
@@ -65,15 +65,15 @@ MidiPixelation {
         
     }
     init {|fftsize=8192, update_rate=1.5, note_dur=0.1, gain=2|
-        server    = default_server;
-        midi_gain = gain;
-        dur       = note_dur;
-        nfft      = fftsize;
-        trig_rate = update_rate;
-        id        = this.prGetId;
-        osc_name  = '/edu/midipix';
-        group     = Group.tail(server);
-        bus       = Bus.control(server, numkeys);
+        server     = default_server;
+        midi_gain  = gain;
+        dur        = note_dur;
+        nfft       = fftsize;
+        trig_rate  = update_rate;
+        id         = this.prGetId;
+        osc_name   = '/edu/midipix';
+        group      = Group.tail(server);
+        bus_powers = Bus.control(server, numkeys);
 
         if( MIDIClient.initialized.not ) {
             MIDIClient.init;
@@ -125,7 +125,7 @@ MidiPixelation {
     } 
     // ----------------------------------------------------------------
     load_synthdefs {
-        SynthDef(synthdef_analysis) {|in_bus_audio=0, out_bus_powers=0, trig_rate=1.5, post_gain=2, i_nfft=8192, hop=0.125, freq0=30, freq1=4800|
+        SynthDef(synthdef_analysis) {|in_bus_audio=0, out_bus_powers=0, post_gain=2, i_nfft=8192, hop=0.125, freq0=30, freq1=4800|
             var freqs = #[25,
                           27.625     ,    29.26766798,    31.00801408,    32.85184655,
                           34.805319  ,    36.87495097,    39.06764966,    41.390733  ,
@@ -163,7 +163,7 @@ MidiPixelation {
             var powers = FFTSubbandPower.kr(fft_data, freqs, 0);
             powers = powers * post_gain;
             ReplaceOut.kr(out_bus_powers, powers);
-            SendReply.kr(trigger, osc_name, powers, id);
+            //SendReply.kr(trigger, osc_name, powers, id);
         }.send(server);
         
         SynthDef(synthdef_send) {|bus, trig_rate|
@@ -179,6 +179,7 @@ MidiPixelation {
         }.send(server);
     }
     
+    /*
     play {|in_bus=0, target, addAction=\addToTail|
         // NumOutputBuses.ir + 0 is the same as SoundIn.ar(0)
         switch( running_status,
@@ -197,6 +198,27 @@ MidiPixelation {
             }
         )
         ^synth
+    }
+    */
+    play {|in_bus_audio|
+        switch( running_status,
+            'STOPPED', {
+                running_status = 'PLAYING';
+                responder.add;
+                synth_analyzer = Synth(this.class.synthdef_analysis, 
+                                       args:      ['in_bus_audio', in_bus, 'out_bus_powers', ],
+                                       target:    group,
+                                       addAction: \addToTail
+                );
+                synth_sender   = Synth(this.class.synthdef_send,
+                                       // TODO
+                                       
+                )
+            },
+            value, {result},
+            value, {result}
+        );
+        
     }
     stop {
         synth.free;
