@@ -7,9 +7,16 @@ MidiPixelation {
     var <in_bus, <out_bus;
     var <id;
     var <post_funcs;
+    var <in_bus_env = -1;
+    var <numkeys = 88;
+    var <>group;
+    var <>bus;
     classvar <>pr_maxid = 0;
     classvar <synthdef_name = 'MidiPixelation';
-    classvar <>synthdef_loaded = false;
+    classvar <synthdef_analysis = 'MidiPix_ANALISIS';
+    classvar <synthdef_send = 'MidiPix_SEND';
+    classvar <synthdef_env  = 'MidiPix_ENV';
+    classvar <>synthdefs_loaded = false;
     classvar <default_server;
     classvar <piano_freqs = #[
           27.625     ,    29.26766798,    31.00801408,    32.85184655,
@@ -43,8 +50,8 @@ MidiPixelation {
         default_server = Server.local;
         StartUp.add {
             if( default_server.serverRunning ) {
-                this.load_synthdef.();
-                synthdef_loaded = true;
+                this.load_synthdefs.();
+                synthdefs_loaded = true;
             };
         }
     } 
@@ -65,14 +72,16 @@ MidiPixelation {
         trig_rate = update_rate;
         id        = this.prGetId;
         osc_name  = '/edu/midipix';
+        group     = Group.tail(server);
+        bus       = Bus.control(server, numkeys);
 
         if( MIDIClient.initialized.not ) {
             MIDIClient.init;
         };
         midiout = MIDIOut(0);
-        if( synthdef_loaded.not ) {
+        if( synthdefs_loaded.not ) {
             server.doWhenBooted({
-                this.load_synthdef.();
+                this.load_synthdefs.();
             });
         };
         running_status = 'STOPPED';
@@ -115,8 +124,8 @@ MidiPixelation {
         );
     } 
     // ----------------------------------------------------------------
-    load_synthdef {
-        SynthDef(this.class.synthdef_name) {|in_bus=0, out_bus=0, trig_rate=1.5, post_gain=2, i_nfft=8192, hop=1/8, freq0=30, freq1=4800|
+    load_synthdefs {
+        SynthDef(synthdef_analysis) {|in_bus_audio=0, out_bus_powers=0, trig_rate=1.5, post_gain=2, i_nfft=8192, hop=0.125, freq0=30, freq1=4800|
             var freqs = #[25,
                           27.625     ,    29.26766798,    31.00801408,    32.85184655,
                           34.805319  ,    36.87495097,    39.06764966,    41.390733  ,
@@ -143,7 +152,7 @@ MidiPixelation {
             var sr = SampleRate.ir;
             var nyfreq = sr * 0.5;
         	var fft_buf = LocalBuf(i_nfft);
-            var in = In.ar(in_bus); 
+            var in = In.ar(in_bus_audio); 
             var thresh0 = freq0 / nyfreq;
             var thresh1 = -1 * (1 - (freq1 / nyfreq));
             var trigger = Impulse.kr(sr/i_nfft * trig_rate);
@@ -153,10 +162,23 @@ MidiPixelation {
                            ;
             var powers = FFTSubbandPower.kr(fft_data, freqs, 0);
             powers = powers * post_gain;
-            Out.kr(out_bus, powers);
+            ReplaceOut.kr(out_bus_powers, powers);
             SendReply.kr(trigger, osc_name, powers, id);
         }.send(server);
+        
+        SynthDef(synthdef_send) {|bus, trig_rate|
+            var powers = In.kr(bus, numkeys);
+            var trigger = Impulse.kr(SampleRate.ir/nfft * trig_rate);
+            SendReply.kr(trigger, osc_name, powers, id);
+        }.send(server);
+        
+        SynthDef(synthdef_env) {|bus_powers, bus_env|
+            var powers = In.kr(bus_powers, numkeys);
+            var env    = In.kr(bus_env, numkeys);
+            ReplaceOut.kr(bus_powers, powers * env);
+        }.send(server);
     }
+    
     play {|in_bus=0, target, addAction=\addToTail|
         // NumOutputBuses.ir + 0 is the same as SoundIn.ar(0)
         switch( running_status,
@@ -168,7 +190,7 @@ MidiPixelation {
                 
                 running_status = 'PLAYING';
                 responder.add;
-                synth = Synth(this.class.synthdef_name, args:['in_bus', in_bus, 'trig_rate', trig_rate], target:target, addAction:addAction);
+                synth = Synth(this.class.synthdef_analysis, args:['in_bus_audio', in_bus, 'trig_rate', trig_rate], target:target, addAction:addAction);
             },
             'PLAYING', {
                 'already playing'.postln;
