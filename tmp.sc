@@ -48,7 +48,8 @@ a = {SinOsc.ar(440) | Out.ar(b, _)}.play.tail
 c = { In.ar(b) | Out.ar(0, _)}.play.tail
 s.queryAllNodes
 c.free
-m.synth_sender['trig_rate'] = 1
+m.synth_sender['trig_rate'] = 0.75
+m.dur = 0.2
 PV_Freeze
 1.dup
 1!2
@@ -66,11 +67,12 @@ Env.fromxy([0, 1, 2, 3], [1, 1, 0.5, 0], [0, 2, -2]).plot
 
 m.post_funcs.pop; m.register_post_processing(~filter)
 m.synth_sender['trig_rate'] = 1
-m.synth_sender['floor_amp'] = 0.1
-m.synth_sender['clip_min'] = 0.05
+m.synth_sender['floor_amp'] = 0.01
+m.synth_sender['ceil_amp'] = 0.5
+m.synth_sender['clip_min'] = 0.001
 m.synth_sender['map_min'] = 0.0
 m.synth_sender['clip_max']  = 1
-m.synth_sender['map_max'] = 0.5
+m.synth_sender['map_max'] = 1
 m.synth_sender.dump
 m.class.piano_freqs
 m.post_funcs.pop; m.register_post_processing(~f2)
@@ -89,7 +91,9 @@ min(4, 5)
 ~f2 = ReEquestri2.midi_scale_attractor("A B C D E")
 ~f3 = ReEquestri2.midi_scale_attractor("A D E F# G# A#")
 ~f4 = ReEquestri2.midi_scale_attractor("A Bb E D# G# B")
-~f5 = ReEquestri2.midi_scale_attractor("A Bb B C C#")
+~f5 = ReEquestri2.midi_scale_attractor("A Bb B G# C#")
+~f6 = ReEquestri2.midi_scale_attractor("A G# Bb")
+~f7 = ReEquestri2.midi_scale_attractor("C Eb G Ab")
 ~f6 = {|ms, amps|
     [ms, amps.clip(a[0], a[1]).linlin(a[1], a[2], a[3], a[4])];
 }
@@ -160,3 +164,13 @@ a.stop
 r.value(2)
 Array.clip
 Proto.value
+~freqs = ("A0".tomidi.."C8".tomidi).collect(_.tofreq)
+a = {
+    var amps = AmpCompA.kr(~freqs);
+    amps.poll(0.5);
+}.play
+~freqs.size
+
+a = {
+    var freqs = ()
+}
