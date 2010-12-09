@@ -7,13 +7,15 @@ MidiPixelation {
     var <in_bus, <out_bus;
     var <id;
     var <post_funcs;
-    var <in_bus_env = -1;
+    var <bus_env = -1;
     var <numkeys = 88;
     var <>group;
     var <>bus_powers;
+    var <>analyzer_hop = 0.25;
+    var <>synth_analyzer, <>synth_sender, <>synth_env, <>synth_env_analyze;
     classvar <>pr_maxid = 0;
     classvar <synthdef_name = 'MidiPixelation';
-    classvar <synthdef_analysis = 'MidiPix_ANALISIS';
+    classvar <synthdef_analysis = 'MidiPix_ANAL';
     classvar <synthdef_send = 'MidiPix_SEND';
     classvar <synthdef_env  = 'MidiPix_ENV';
     classvar <>synthdefs_loaded = false;
@@ -41,12 +43,31 @@ MidiPixelation {
         2227.54041621,  2359.99686217,  2500.32957828,  2649.00691192,
         2806.52505988,  2973.40972434,  3150.21786734,  3337.53956964,
         3536.0       ,  3746.26150165,  3969.02580282,  4205.03635865, 4400];
+    classvar <piano_amps = #[
+        0.995633, 0.994918, 0.994105, 0.993186, 0.992148, 0.990981, 
+        0.989672, 0.988208, 0.986576, 0.984762, 0.982749, 0.980523, 
+        0.978067, 0.975365, 0.9724, 0.969155, 0.965613, 0.961758, 
+        0.957573, 0.953043, 0.948152, 0.942887, 0.937234, 0.93118,
+        0.924714, 0.917825, 0.910504, 0.902742, 0.89453, 0.885862, 
+        0.87673, 0.867128, 0.85705, 0.846493, 0.835452, 0.823925, 
+        0.81191, 0.799409, 0.786425, 0.772963, 0.759032, 0.744647, 
+        0.729824, 0.714586, 0.698961, 0.682984, 0.666694, 0.650138, 
+        0.633369, 0.616447, 0.599436, 0.582405, 0.56543, 0.548586, 
+        0.531951, 0.515604, 0.499621, 0.484076, 0.469038, 0.45457, 
+        0.440727, 0.427558, 0.415104, 0.403396, 0.392457, 0.382304, 
+        0.372943, 0.364378, 0.356604, 0.349615, 0.343399, 0.337944, 
+        0.333235, 0.32926, 0.326005, 0.32346, 0.321615, 0.320465, 
+        0.320009, 0.320247, 0.321186, 0.322835, 0.325209, 0.328326, 
+        0.332207, 0.336878, 0.342366, 0.348703
+    ];
+    classvar <piano_amps2;
 
-    *new {|fftsize=8192, update_rate=1.5, note_dur=0.1, gain=2|
+    *new {|fftsize=8192, update_rate=1, note_dur=0.1, gain=2|
         ^super.new.init(fftsize, update_rate, note_dur, gain);
     }
     *initClass {
         midinotes = piano_freqs.collect {|freq| freq.cpsmidi};
+        piano_amps2 = piano_amps * piano_amps;
         default_server = Server.local;
         StartUp.add {
             if( default_server.serverRunning ) {
@@ -64,7 +85,7 @@ MidiPixelation {
         ^newid;
         
     }
-    init {|fftsize=8192, update_rate=1.5, note_dur=0.1, gain=2|
+    init {|fftsize=8192, update_rate=1, note_dur=0.1, gain=2|
         server     = default_server;
         midi_gain  = gain;
         dur        = note_dur;
@@ -95,21 +116,19 @@ MidiPixelation {
                 if( message[2] == id ) {
                     noteoffs = Array(88);
                     amps = message[4..91];
-                    new_midinotes = midinotes;
+                    new_midinotes = midinotes.copy;
                     post_funcs.do {|func|
                         #new_midinotes, amps = func.(new_midinotes, amps);
                     };
                     amps = (amps * (127.0 * midi_gain)).clip(0, 127); // this could also be a post_func 
-                    // fork {
-                        (amps.size - 1).do {|i|
-                            amp = amps[i].floor;
-                            if( amp > 0 ) {
-                                midinote = new_midinotes[i];
-                                midiout.noteOn(0, midinote, amp);
-                                noteoffs.add(midinote);
-                            };
+                    (amps.size - 1).do {|i|
+                        amp = amps[i].floor;
+                        if( amp > 0 ) {
+                            midinote = new_midinotes[i];
+                            midiout.noteOn(0, midinote, amp);
+                            noteoffs.add(midinote);
                         };
-                    //};
+                    };
                     if( noteoffs.size > 0 ) {
                         fork {
                             dur.wait;
@@ -117,15 +136,15 @@ MidiPixelation {
                                     midiout.noteOff(0, note, 0)
                             };
                         };    
-                    };
-                    
+                    };     
                 };
             }
         );
+        CmdPeriod.doOnce { this.stop };
     } 
     // ----------------------------------------------------------------
     load_synthdefs {
-        SynthDef(synthdef_analysis) {|in_bus_audio=0, out_bus_powers=0, post_gain=2, i_nfft=8192, hop=0.125, freq0=30, freq1=4800|
+        SynthDef(synthdef_analysis) {|in_bus_audio=0, out_bus_powers=0, post_gain=1, i_nfft=8192, hop=0.25, freq0=30, freq1=4800|
             var freqs = #[25,
                           27.625     ,    29.26766798,    31.00801408,    32.85184655,
                           34.805319  ,    36.87495097,    39.06764966,    41.390733  ,
@@ -155,80 +174,72 @@ MidiPixelation {
             var in = In.ar(in_bus_audio); 
             var thresh0 = freq0 / nyfreq;
             var thresh1 = -1 * (1 - (freq1 / nyfreq));
-            var trigger = Impulse.kr(sr/i_nfft * trig_rate);
+            //var trigger = Impulse.kr(sr/i_nfft * trig_rate);
             var fft_data = FFT(fft_buf, in, hop, wintype:1) // wintype = hann
                            | PV_BrickWall(_, thresh0)
                            | PV_BrickWall(_, thresh1)
                            ;
             var powers = FFTSubbandPower.kr(fft_data, freqs, 0);
-            powers = powers * post_gain;
+            //powers = powers * post_gain;
+            powers = powers * piano_amps;
             ReplaceOut.kr(out_bus_powers, powers);
-            //SendReply.kr(trigger, osc_name, powers, id);
+            //SendReply.kr(Impulse.kr(1), osc_name, powers, id);
         }.send(server);
-        
-        SynthDef(synthdef_send) {|bus, trig_rate|
-            var powers = In.kr(bus, numkeys);
-            var trigger = Impulse.kr(SampleRate.ir/nfft * trig_rate);
+
+        SynthDef(synthdef_send) {|in_bus_powers, trig_rate=1, block_low=0, block_high=1, clip_min=0, clip_max=1, map_min=0, map_max=1|
+            var powers = In.kr(in_bus_powers, numkeys);
+            var rate = SampleRate.ir/nfft * analyzer_hop.reciprocal * trig_rate;
+            var trigger = Impulse.kr(rate);
+            powers = powers * (powers > block_low);
+            powers = powers * (powers < block_high);
+            powers = powers.clip(clip_min, clip_max);
+            powers = powers.linlin(clip_min, clip_max, map_min, map_max);
             SendReply.kr(trigger, osc_name, powers, id);
         }.send(server);
-        
-        SynthDef(synthdef_env) {|bus_powers, bus_env|
+    
+        SynthDef(synthdef_env) {|bus_powers, bus_env, env_floor=(-50.dbamp)|
             var powers = In.kr(bus_powers, numkeys);
             var env    = In.kr(bus_env, numkeys);
-            ReplaceOut.kr(bus_powers, powers * env);
+            var out    = powers * (env + env_floor);
+            ReplaceOut.kr(bus_powers, out);
         }.send(server);
     }
     
-    /*
-    play {|in_bus=0, target, addAction=\addToTail|
-        // NumOutputBuses.ir + 0 is the same as SoundIn.ar(0)
-        switch( running_status,
-            'PAUSED', {
-                running_status = 'PLAYING';
-                this.synth.run(1);
-            },  
-            'STOPPED', {
-                
-                running_status = 'PLAYING';
-                responder.add;
-                synth = Synth(this.class.synthdef_analysis, args:['in_bus_audio', in_bus, 'trig_rate', trig_rate], target:target, addAction:addAction);
-            },
-            'PLAYING', {
-                'already playing'.postln;
-            }
-        )
-        ^synth
-    }
-    */
     play {|in_bus_audio|
         switch( running_status,
             'STOPPED', {
                 running_status = 'PLAYING';
                 responder.add;
-                synth_analyzer = Synth(this.class.synthdef_analysis, 
-                                       args:      ['in_bus_audio', in_bus, 'out_bus_powers', ],
-                                       target:    group,
-                                       addAction: \addToTail
-                );
-                synth_sender   = Synth(this.class.synthdef_send,
-                                       // TODO
-                                       
-                )
+                forkIfNeeded {
+                    synth_analyzer = Synth.tail(group, this.class.synthdef_analysis, 
+                                                args: ['in_bus_audio', in_bus_audio, 'out_bus_powers', bus_powers.index, 'hop', analyzer_hop]);
+                    //server.sync;                    
+                    synth_sender = Synth.tail(group, this.class.synthdef_send,
+                                                args: ['in_bus_powers', bus_powers.index, 'trig_rate', trig_rate]);
+                    
+                    server.sync;
+                    group.run(1);
+                };
             },
-            value, {result},
-            value, {result}
+            'PAUSED', {
+                running_status = 'PLAYING';
+                group.run(1);
+            },
+            'PLAYING', {
+                'already playing!'.postln;
+            }
         );
         
     }
     stop {
-        synth.free;
+        group.run(0);
+        group.free;
         responder.remove;
         running_status = 'STOPPED';
     }
     pause {
         running_status = 'PAUSED';
-        synth.run(0);
-        ^synth;
+        group.run(0);
     }
     free {
         this.stop;
@@ -249,5 +260,22 @@ MidiPixelation {
         it should return an array [amps, midinotes] with the desired midifications
         */ 
         post_funcs.add(func)    
+    }
+    analyze_env {|in_audio, floor=(-50.dbamp)|
+        //this.pr_spectral_envelope_run(true);
+        assert { synth_env.isNil and: synth_analyzer.notNil };
+        bus_env = Bus.control(server, numkeys);
+
+        synth_env_analyze = Synth.head(group, this.class.synthdef_analysis, 
+                                       args: ['in_bus_audio', in_audio, 'out_bus_powers', bus_env]);
+        synth_env = Synth.after(synth_analyzer, this.class.synthdef_env, 
+                                       args: ['bus_powers', bus_powers, 'bus_env', bus_env, 'env_floor', floor]); 
+    }
+    analyze_env_stop {
+        if( synth_env_analyze.notNil ) {
+            synth_env_analyze.free;
+            synth_env.free;
+            bus_env.free;
+        };
     }
 }
