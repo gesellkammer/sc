@@ -1,0 +1,39 @@
+( var name, func, specs, componentType, componentSubtype, builder;
+
+name = "FeedbackKill";
+
+func = {|ampthresh=0.125, pcile=0.9, pcile_thresh= 3500, ampattack=0.01, amprelease=0.02, lagin=0.2, lagout=0.7, lagrat2=1.4,
+      amplim= -4, shiftrange=0.005, aten=0.5, bw=0.0065, atenfact=0.5, feedthresh=0.5, freqshift=2|
+      var a0 = AudioIn.ar(1);
+      var a1 = AudioIn.ar(2);
+      var out0 = EM_FeedbackKill.ar(a0, ampthresh, pcile, pcile_thresh, ampattack, amprelease, lagin, lagout, lagrat2, amplim,
+                                    shiftrange, aten, bw, atenfact, feedthresh, freqshift);
+      var out1 = EM_FeedbackKill.ar(a1, ampthresh, pcile, pcile_thresh, ampattack, amprelease, lagin, lagout, lagrat2, amplim,
+                                    shiftrange, aten, bw, atenfact, feedthresh, freqshift);
+      Out.ar(0, [out0, out1]);
+};
+
+specs = #[
+    [0, 1,    \Linear, 0.125, \Generic],  // ampthresh
+    [0, 1,    \Linear, 0.9,   \Generic],  // pcile
+    [0, 8000, \Logarithmic, 3500,  \Generic],  // pcile_thresh
+    [0, 2,    \Linear, 0.01,  \Generic],  // ampattack
+    [0, 2,    \Linear, 0.02,  \Generic],  // amprelease
+    [0, 2,    \Linear, 0.2,   \Generic],  // lagin
+    [0, 2,    \Linear, 0.7,   \Generic],  // lagout
+    [0, 4,    \Linear, 1.4,   \Generic],  // lagrat2
+    [-60, 0,  \Linear, -4,    \Generic],  // amplim
+    [0, 1,    \Linear, 0.005, \Generic],  // shiftrange
+    [0, 1,    \Linear, 0.5,   \Generic],  // aten
+    [0, 1,    \Linear, 0.065, \Generic],  // bw
+    [0, 1,    \Linear, 0.5,   \Generic],  // atenfact
+    [0, 1,    \Linear, 0.5,   \Generic],  // feedthresh
+    [0, 16,   \Linear, 2,     \Generic],  // freqshift
+];
+                                    
+componentType = \aufx;
+componentSubtype = \XFBK;
+
+builder = AudioUnitBuilder.new(name, componentSubtype, func, specs, componentType);
+builder.makeInstall;
+)

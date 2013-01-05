@@ -81,18 +81,20 @@ ReEquestri2 {
         });
 	}
 	synthdefs {|server|
-	    server = s ? Server.default;
+	    server = server ? Server.default;
+	    
 	    SynthDef('reeq-frozen') { |out=0, in=0, smooth_ratio=0.5, freeze=0, i_nfft=8192, i_hop=0.25|
+	        // whenever freeze is 1, the sound is frozen
 	        var audioin = In.ar(in);
 	        var chain = FFT(LocalBuf(i_nfft), audioin, i_hop, 1);
 	        var frozen = chain
-	                     | PV_Freeze( _, doit ) 
+	                     | PV_Freeze( _, freeze ) 
                          | PV_MagSmooth( _, smooth_ratio )
                          | IFFT( _ )
-                         | (_ ! 2 * 0.5)   // TODO: STEREO o MONO?
                          ;
              Select.ar(freeze, [audioin, frozen]) | Out.ar(out, _);
         }.send(server);
+        
     }
 }
 

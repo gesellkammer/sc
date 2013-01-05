@@ -1,6 +1,0 @@
-
-a = BEPartialPlayerX("/Users/edu/proj/arribabajo/sdifs/pru", chan0:4)
-RedMatrixMixerGUI(RedMatrixMixer(), 0@700)
-a = BEPartialPlayerXGui("/Users/edu/proj/arribabajo/sdifs")
-
-

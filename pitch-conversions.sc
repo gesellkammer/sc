@@ -7,6 +7,9 @@
     tofreq {
         ^this.asString.tofreq;
     }
+    n2m {
+        ^this.asString.tofreq;
+    }
 }
 
 + String {
@@ -16,6 +19,9 @@
     tomidi { 
         ^Priv_PitchConvertion.note_to_midi(this);
     }
+    n2m {
+	    ^Priv_PitchConvertion.note_to_midi(this);
+    }
 }
 
 + SimpleNumber {
@@ -24,6 +30,9 @@
     }
     tofreq {
         ^this.midicps;
+    }
+    m2n {
+	    ^Priv_PitchConvertion.midi_to_note(this);
     }
     freqtonote {
         ^this.tomidi.miditonote;

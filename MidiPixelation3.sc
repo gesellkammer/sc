@@ -1,8 +1,8 @@
-MidiPixelation {
+MidiPixelation3 {
     
     classvar <midinotes;
     var server, midiout, <>midi_gain, <>dur, <responder, <synth;
-    var <running_status, osc_name;
+    var <running_status, <osc_name;
     var <nfft, <trig_rate;
     var <in_bus, <bus_internal, <bus_out;
     var <id;
@@ -12,12 +12,15 @@ MidiPixelation {
     var <>midi_chan;
     var <>group;
     var <>analyzer_hop = 0.25;
-    var <>synth_analyzer, <>synth_sender, <>synth_env, <>synth_env_analyze;
+    var <>synth_analyzer, <>synth_sender, <>synth_env, <>synth_env_analyze, <>synth_resynth;
     classvar <>pr_maxid = 0;
-    classvar <synthdef_name = 'MidiPixelation';
+    
+    classvar <synthdef_name     = 'MidiPixelation';
     classvar <synthdef_analysis = 'MidiPix_ANAL';
-    classvar <synthdef_send = 'MidiPix_SEND';
-    classvar <synthdef_env  = 'MidiPix_ENV';
+    classvar <synthdef_send     = 'MidiPix_SEND';
+    classvar <synthdef_env      = 'MidiPix_ENV';
+    classvar <synthdef_resynth  = 'MidiPix_RESYNTH';
+    
     classvar <>synthdefs_loaded = false;
     classvar <default_server;
     classvar <piano_freqs = #[
@@ -92,7 +95,7 @@ MidiPixelation {
         nfft       = fftsize;
         trig_rate  = update_rate;
         id         = this.prGetId;
-        osc_name   = '/edu/midipix';
+        osc_name   = '/edu/midipix' ++ id;
         group      = Group.tail(server);
         bus_internal = Bus.control(server, numkeys);
         bus_out      = Bus.control(server, numkeys);
@@ -114,32 +117,31 @@ MidiPixelation {
         // -----------------------------------------------------------
         responder = OSCresponderNode(nil, osc_name, 
             {|time, responder, message|
-                var amp, midinote, amps, noteoffs, new_midinotes;           
-                if( message[2] == id ) {
-                    noteoffs = Array(88);
-                    amps = message[4..91];
-                    new_midinotes = midinotes.copy;
-                    post_funcs.do {|func|
-                        #new_midinotes, amps = func.(new_midinotes, amps);
-                    };
-                    amps = (amps * (127.0 * midi_gain)).clip(0, 127); // this could also be a post_func 
-                    (amps.size - 1).do {|i|
-                        amp = amps[i].floor;
-                        if( amp > 0 ) {
-                            midinote = new_midinotes[i];
-                            midiout.noteOn(midi_chan, midinote, amp);
-                            noteoffs.add(midinote);
-                        };
-                    };
-                    if( noteoffs.size > 0 ) {
-                        fork {
-                            dur.wait;
-                            noteoffs.do {|note|
-                                    midiout.noteOff(midi_chan, note, 0)
-                            };
-                        };    
-                    };     
+                var amp, midinote, amps, noteoffs, new_midinotes, chan;           
+                noteoffs = Array(88);
+                amps = message[4..91];
+                chan = midi_chan;
+                new_midinotes = midinotes.copy;
+                post_funcs.do {|func|
+                    #new_midinotes, amps = func.(new_midinotes, amps);
                 };
+                amps = (amps * (127.0 * midi_gain)); // this could also be a post_func 
+                (amps.size - 1).do {|i|
+                    amp = amps[i].floor;
+                    if( amp > 0 ) {
+                        midinote = new_midinotes[i];
+                        midiout.noteOn(chan, midinote, amp);
+                        noteoffs.add(midinote);
+                    };
+                };
+                if( noteoffs.size > 0 ) {
+                    {
+                        dur.wait;
+                        noteoffs.do {|note|
+                                midiout.noteOff(midi_chan, note, 0)
+                        };
+                    }.fork(AppClock);    
+                };     
             }
         );
         CmdPeriod.doOnce { this.stop };
@@ -197,7 +199,7 @@ MidiPixelation {
             powers = powers.clip(clip_min, clip_max);
             powers = powers.linlin(clip_min, clip_max, map_min, map_max);
             SendReply.kr(trigger, osc_name, powers, id);
-            Out.kr(bus_out, powers);
+            ReplaceOut.kr(bus_out, powers);
         }.send(server);
     
         SynthDef(synthdef_env) {|bus_powers, bus_env, env_floor=(-50.dbamp)|
@@ -205,6 +207,13 @@ MidiPixelation {
             var env    = In.kr(bus_env, numkeys);
             var out    = powers * (env + env_floor);
             ReplaceOut.kr(bus_powers, out);
+        }.send(server);
+        
+        SynthDef(synthdef_resynth) {|in, out|
+            SinOsc.ar(piano_freqs) * In.kr(in, numkeys)
+            | Mix 
+            | Out.ar(out, _)
+            ;
         }.send(server);
     }
     
@@ -280,5 +289,9 @@ MidiPixelation {
             synth_env.free;
             bus_env.free;
         };
+    }
+    resynth {|out|
+        synth_resynth = Synth.after(synth_sender, this.class.synthdef_resynth, 
+            args: ['in', bus_internal, 'out', out]);
     }
 }

@@ -1,25 +1,32 @@
-MidiPixelation {
-    
+MidiPixelation5 { 
     classvar <midinotes;
-    var server, midiout, <>midi_gain, <>dur, <responder, <synth;
-    var <running_status, osc_name;
-    var <nfft, <trig_rate;
+    var <>name, server, midiout, <>midi_gain, <>dur, <responder, <synth;
+    var <running_status, <>osc_path;
+    var <nfft, <>trig_rate;
     var <in_bus, <bus_internal, <bus_out;
+    var <>bus_ar_in;
     var <id;
     var <post_funcs;
     var <bus_env = -1;
     var <numkeys = 88;
-    var <>midi_chan;
+    var <>midichan;
     var <>group;
     var <>analyzer_hop = 0.25;
-    var <>synth_analyzer, <>synth_sender, <>synth_env, <>synth_env_analyze;
+    var <>synth_analyzer, <>synth_sender, <>synth_env, <>synth_env_analyze, <>synth_resynth;
+    var <>amp_to_channel;
     classvar <>pr_maxid = 0;
-    classvar <synthdef_name = 'MidiPixelation';
-    classvar <synthdef_analysis = 'MidiPix_ANAL';
-    classvar <synthdef_send = 'MidiPix_SEND';
-    classvar <synthdef_env  = 'MidiPix_ENV';
-    classvar <>synthdefs_loaded = false;
+    classvar <midiserver_port = 57130;
+    classvar <>midiserver_addr;
+    
+    var <>synthdef_name     = 'MidiPixelation';
+    var <>synthdef_analysis = 'MidiPix_ANAL';
+    var <>synthdef_send     = 'MidiPix_SEND';
+    var <>synthdef_env      = 'MidiPix_ENV';
+    var <>synthdef_resynth  = 'MidiPix_RESYNTH';
+    
+    var <>synthdefs_loaded = false;
     classvar <default_server;
+    classvar <piano_amps2;
     classvar <piano_freqs = #[
           27.625     ,    29.26766798,    31.00801408,    32.85184655,
           34.805319  ,    36.87495097,    39.06764966,    41.390733  ,
@@ -60,21 +67,14 @@ MidiPixelation {
         0.320009, 0.320247, 0.321186, 0.322835, 0.325209, 0.328326, 
         0.332207, 0.336878, 0.342366, 0.348703
     ];
-    classvar <piano_amps2;
-
-    *new {|fftsize=8192, update_rate=1, note_dur=0.1, gain=2, midichan=0|
-        ^super.new.init(fftsize, update_rate, note_dur, gain, midichan);
+    *new {|fftsize=8192, update_rate=1, note_dur=0.1, gain=2, midichan=1, name='mpix', inbus|
+        ^super.new.init(fftsize, update_rate, note_dur, gain, midichan, name, inbus);
     }
     *initClass {
         midinotes = piano_freqs.collect {|freq| freq.cpsmidi};
+        midiserver_addr = NetAddr("127.0.0.1", 57130);
         piano_amps2 = piano_amps * piano_amps;
         default_server = Server.local;
-        StartUp.add {
-            if( default_server.serverRunning ) {
-                this.load_synthdefs.();
-                synthdefs_loaded = true;
-            };
-        }
     } 
     prGetId {
         var newid = this.class.pr_maxid;
@@ -82,71 +82,133 @@ MidiPixelation {
         if( this.class.pr_maxid > 1000 ) {
             this.class.pr_maxid = 0;
         };
-        ^newid;
-        
+        ^newid;    
     }
-    init {|fftsize=8192, update_rate=1, note_dur=0.1, gain=2, midichan=0|
+    init {|fftsize=8192, update_rate=1, note_dur=0.1, gain=2, midichan=1, name='mpix', inbus, amp_to_channel=0|
+        var argName = name;
+        var arg_midichan = midichan;
+        var arg_amp_to_channel;
+        this.name  = argName;
         server     = default_server;
         midi_gain  = gain;
         dur        = note_dur;
         nfft       = fftsize;
         trig_rate  = update_rate;
+        this.bus_ar_in  = inbus;
         id         = this.prGetId;
-        osc_name   = '/edu/midipix';
-        group      = Group.tail(server);
+        //group      = Group.tail(server);
         bus_internal = Bus.control(server, numkeys);
         bus_out      = Bus.control(server, numkeys);
-        this.midi_chan = midichan;
-
+        this.midichan = arg_midichan;
+        this.amp_to_channel = arg_amp_to_channel;
+        fork {
+            var cond, out;
+            cond = this.midiserver_launch;
+            cond.wait;       
+            #cond, out = this.get_connection(name);
+            // cond.wait;
+            // this.osc_path = out.value;
+            this.osc_path = "/conn/" ++ name;
+            synthdef_analysis = name ++ '_' ++ synthdef_analysis;
+            synthdef_resynth  = name ++ '_' ++ synthdef_resynth;
+            synthdef_send     = name ++ '_' ++ synthdef_send;
+            synthdef_env      = name ++ '_' ++ synthdef_env;
+            server.doWhenBooted({
+                this.load_synthdefs.();
+            });    
+        };    
         if( MIDIClient.initialized.not ) {
             MIDIClient.init;
         };
         midiout = MIDIOut(0);
-        if( synthdefs_loaded.not ) {
-            server.doWhenBooted({
-                this.load_synthdefs.();
-            });
-        };
         running_status = 'STOPPED';
         post_funcs     = List();
         CmdPeriod.add({this.free});
-
-        // -----------------------------------------------------------
-        responder = OSCresponderNode(nil, osc_name, 
-            {|time, responder, message|
-                var amp, midinote, amps, noteoffs, new_midinotes;           
-                if( message[2] == id ) {
-                    noteoffs = Array(88);
-                    amps = message[4..91];
-                    new_midinotes = midinotes.copy;
-                    post_funcs.do {|func|
-                        #new_midinotes, amps = func.(new_midinotes, amps);
-                    };
-                    amps = (amps * (127.0 * midi_gain)).clip(0, 127); // this could also be a post_func 
-                    (amps.size - 1).do {|i|
-                        amp = amps[i].floor;
-                        if( amp > 0 ) {
-                            midinote = new_midinotes[i];
-                            midiout.noteOn(midi_chan, midinote, amp);
-                            noteoffs.add(midinote);
+        CmdPeriod.doOnce { this.stop };
+    } 
+    get_connection {|name|
+        var c = Condition();
+        var out = Ref();
+        var resp = OSCresponderNode(nil, "/reply", 
+        { |time, resp, msg|
+                out.value = "/conn/%".format(name);
+                this.conn_send("/dur", dur);   // set up connection
+                c.test = true; c.signal
+        }).add.removeWhenDone;
+        var channel = this.midichan;
+        if( amp_to_channel == 1 ) {
+            channel = -1;
+        };
+        midiserver_addr.sendMsg("/newconn", name, channel);
+        ^[c, out];
+    }
+    conn_amp_to_channel {|status|
+        midiserver_addr.sendMsg(osc_path ++ "/amp2chan/status", status);
+    }
+    conn_amp_to_channel_exp {|value|
+        midiserver_addr.sendMsg(osc_path ++ "/amp2chan/exp", value);
+    }
+    conn_amp_to_channel_maxchannels {|value|
+        midiserver_addr.sendMsg(osc_path ++ "/amp2chan/maxchannels", value);
+    }
+    conn_send {|path ... messages|
+        path = path.asString;
+        if( path[0] != $/ ) {
+            path = "/" ++ path;
+        };
+        midiserver_addr.sendMsg(osc_path ++ path, *messages);
+    }
+    conn_remove_component {|id|
+        midiserver_addr.sendMsg("/remove", id);   // we send the message to the server, the server removes it from the connection.
+    }
+    conn_mastergain { |value|
+        midiserver_addr.sendMsg(osc_path ++ "/mastergain", value);
+    }
+    midiserver_launch { |timeout=20|
+	    var c = Condition(), started = true, task, pollinterval=0.5;
+        forkIfNeeded {
+            if( this.midiserver_isrunning.not ) {
+                "open -a Terminal /Users/edu/bin/midipix.py".unixCmd;
+                task = Task {
+                    (timeout / pollinterval).asInteger.do {
+                        if( this.midiserver_isrunning ) {
+                            started = true;
+                            task.stop;
+                        }{ //else
+                            pollinterval.wait;
                         };
                     };
-                    if( noteoffs.size > 0 ) {
-                        fork {
-                            dur.wait;
-                            noteoffs.do {|note|
-                                    midiout.noteOff(midi_chan, note, 0)
-                            };
-                        };    
-                    };     
                 };
+                if( started ) {
+                    "midiserver started!".postln;
+                }{
+                    "could not start midiserver".warn;
+                };
+                c.test = true; c.signal;
+            }{ //else
+                c.test = true; c.signal;
+                this.debug("midiserver already running")
             }
-        );
-        CmdPeriod.doOnce { this.stop };
+        }
+        ^c;
+    }
+    midiserver_isrunning { |timeout=0.5|
+	    // this should be called inside a Routine 
+        // we cannot create a fork ourselves since we want to be
+        // in the same Routine as the caller.
+        var out = Ref();
+        var resp, cond;
+        var timeout_value = 'TIMEOUT';
+        resp = 
+        #resp, cond = ReeqTools.reply_responder(out, timeout:timeout, timeout_value:timeout_value); 
+        midiserver_addr.sendMsg("/test");
+        cond.wait; 
+        ^(out.value != timeout_value);
     } 
     // ----------------------------------------------------------------
     load_synthdefs {
-        SynthDef(synthdef_analysis) {|in_bus_audio=0, out_bus_powers=0, post_gain=1, i_nfft=8192, hop=0.25, freq0=30, freq1=4800|
+        SynthDef(synthdef_analysis) {|in_bus_audio=0, out_bus_powers=0, pre_gain=1, post_gain=1, i_nfft=8192, hop=0.25, freq0=30, freq1=4800, debug=0|
+        //SynthDef(synthdef_analysis) {|in_bus_audio=0, out_bus_powers=0, pre_gain=1, post_gain=1, i_nfft=4096, hop=0.25, freq0=30, freq1=4800, debug=0|
             var freqs = #[25,
                           27.625     ,    29.26766798,    31.00801408,    32.85184655,
                           34.805319  ,    36.87495097,    39.06764966,    41.390733  ,
@@ -173,31 +235,28 @@ MidiPixelation {
             var sr = SampleRate.ir;
             var nyfreq = sr * 0.5;
         	var fft_buf = LocalBuf(i_nfft);
-            var in = In.ar(in_bus_audio); 
+            var in = In.ar(in_bus_audio) * pre_gain; 
             var thresh0 = freq0 / nyfreq;
             var thresh1 = -1 * (1 - (freq1 / nyfreq));
-            //var trigger = Impulse.kr(sr/i_nfft * trig_rate);
-            var fft_data = FFT(fft_buf, in, hop, wintype:1) // wintype = hann
+            var fft_data = FFT(fft_buf, in, hop, wintype: FFT.wintype_hann)  
                            | PV_BrickWall(_, thresh0)
-                           | PV_BrickWall(_, thresh1)
-                           ;
+                           | PV_BrickWall(_, thresh1) ;
             var powers = FFTSubbandPower.kr(fft_data, freqs, 0);
-            //powers = powers * post_gain;
-            powers = powers * piano_amps;
-            ReplaceOut.kr(out_bus_powers, powers);
-            //SendReply.kr(Impulse.kr(1), osc_name, powers, id);
+            powers = powers * (post_gain * piano_amps);
+            powers     | ReplaceOut.kr(out_bus_powers, _);
+            // in * debug | Out.ar(0, _);            
         }.send(server);
 
-        SynthDef(synthdef_send) {|bus_out, in_bus_powers, trig_rate=1, block_low=0, block_high=1, clip_min=0, clip_max=1, map_min=0, map_max=1|
+        SynthDef(synthdef_send) {|bus_out, in_bus_powers, trig_rate=1, block_low=0, block_high=100, clip_min=0, clip_max=1, map_min=0, map_max=1, midi_pregain=1, jitter=0, debug=0|
             var powers = In.kr(in_bus_powers, numkeys);
             var rate = SampleRate.ir/nfft * analyzer_hop.reciprocal * trig_rate;
-            var trigger = Impulse.kr(rate);
+            var trigger = Impulse.kr(rate);  // @TODO: add jitter
+            powers = powers * midi_pregain;
             powers = powers * (powers > block_low);
             powers = powers * (powers < block_high);
             powers = powers.clip(clip_min, clip_max);
             powers = powers.linlin(clip_min, clip_max, map_min, map_max);
-            SendReply.kr(trigger, osc_name, powers, id);
-            Out.kr(bus_out, powers);
+            powers | SendReply.kr(trigger, osc_path ++ "/midi", _ , id);
         }.send(server);
     
         SynthDef(synthdef_env) {|bus_powers, bus_env, env_floor=(-50.dbamp)|
@@ -206,21 +265,33 @@ MidiPixelation {
             var out    = powers * (env + env_floor);
             ReplaceOut.kr(bus_powers, out);
         }.send(server);
+        
+        SynthDef(synthdef_resynth) {|in, out|
+            SinOsc.ar(piano_freqs) * In.kr(in, numkeys)
+            | Mix 
+            | Out.ar(out, _)
+            ;
+        }.send(server);
     }
     
-    play {|in_bus_audio|
+    play {|inbus|
+        if( inbus.notNil ) {
+            bus_ar_in = inbus;
+        }{ //else
+            inbus = bus_ar_in;
+        };
+        assert({ inbus.notNil }, ".play %".format(this.name));
         switch( running_status,
             'STOPPED', {
                 running_status = 'PLAYING';
-                responder.add;
                 forkIfNeeded {
-                    synth_analyzer = Synth.tail(group, this.class.synthdef_analysis, 
-                                                args: ['in_bus_audio', in_bus_audio, 'out_bus_powers', bus_internal.index, 'hop', analyzer_hop]);
-                    //server.sync;                    
-                    synth_sender = Synth.tail(group, this.class.synthdef_send,
-                                                args: ['out_bus', bus_out ,'in_bus_powers', bus_internal.index, 'trig_rate', trig_rate]);
-                    
+                    group = Group.tail(server);
                     server.sync;
+                    synth_analyzer = Synth.tail(group, this.synthdef_analysis, 
+                                                args: ['in_bus_audio', inbus, 'out_bus_powers', bus_internal.index, 'hop', analyzer_hop]);
+                    synth_sender = Synth.tail(group, this.synthdef_send,
+                                                args: ['out_bus', bus_out ,'in_bus_powers', bus_internal.index, 'trig_rate', trig_rate]);
+                    server.sync;                    
                     group.run(1);
                 };
             },
@@ -232,20 +303,26 @@ MidiPixelation {
                 'already playing!'.postln;
             }
         );
-        
+    }
+    monitor {|outbus=0|
+        ^{ In.ar(bus_ar_in) | Out.ar(outbus, _) }.play;
     }
     stop {
         group.run(0);
         group.free;
-        responder.remove;
         running_status = 'STOPPED';
     }
     pause {
         running_status = 'PAUSED';
-        group.run(0);
+        if( group.notNil ) {
+            group.run(0)
+        } /*else*/ { 
+            "paused, was not playing".warn;
+        };
     }
     free {
         this.stop;
+        group.free
     }
     test_midi {
         midiout.noteOn(0, 60, 90);
@@ -254,24 +331,14 @@ MidiPixelation {
             midiout.noteOff(0, 60, 0);
         }
     }
-    register_post_processing {|func|
-        /*
-        func should have the prototype func {|midinotes, amps| ... } where:
-        amps      = the amplitude (between 0 and 1) of each note
-        midinotes = the midi note-number corresponding to each amp
-        
-        it should return an array [amps, midinotes] with the desired midifications
-        */ 
-        post_funcs.add(func)    
-    }
     analyze_env {|in_audio, floor=(-50.dbamp)|
         //this.pr_spectral_envelope_run(true);
         assert { synth_env.isNil and: synth_analyzer.notNil };
         bus_env = Bus.control(server, numkeys);
 
-        synth_env_analyze = Synth.head(group, this.class.synthdef_analysis, 
+        synth_env_analyze = Synth.head(group, this.synthdef_analysis, 
                                        args: ['in_bus_audio', in_audio, 'out_bus_powers', bus_env]);
-        synth_env = Synth.after(synth_analyzer, this.class.synthdef_env, 
+        synth_env = Synth.after(synth_analyzer, this.synthdef_env, 
                                        args: ['bus_powers', bus_internal, 'bus_env', bus_env, 'env_floor', floor]); 
     }
     analyze_env_stop {
@@ -279,6 +346,15 @@ MidiPixelation {
             synth_env_analyze.free;
             synth_env.free;
             bus_env.free;
+        };
+    }
+    resynth {|out=0|
+        if( out >= 0 ) {
+            // synth_resynth.free;
+            synth_resynth = Synth.after(synth_sender, this.synthdef_resynth, 
+                args: ['in', bus_internal, 'out', out]);
+        } /*else*/ { 
+            synth_resynth.free
         };
     }
 }
