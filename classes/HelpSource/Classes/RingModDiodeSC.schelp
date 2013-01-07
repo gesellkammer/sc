@@ -1,0 +1,67 @@
+TITLE:: RingModDiodeSC
+summary:: Ring Modulation with a basic simulation of a diode for the modulating signal
+categories:: Undocumented classes, UGens>Undocumented
+related:: Classes/SomeRelatedClass, Reference/SomeRelatedStuff, etc.
+
+DESCRIPTION::
+This is a pseudo UGen implementing a series of ring modulation strategies which can be mixed together. In particular it implements a very basic simulation of a diode applied to the modulating signal. It can be used with any modulating signal or it can generate its own signal. This last option can switch from a normal multiplication with a sinus tone to an implementation via the Hilbert transform (PitchShift).
+All the multiplications and distortions are done using 4-times oversampling. It is possible to cross-fade between the oversampled and normal versions with os_mod (the modulation part) and os_mul (the multiplication part).
+
+
+CLASSMETHODS::
+
+METHOD:: ar
+
+ARGUMENT:: in
+The signal to modulate
+
+ARGUMENT:: mod_in
+A signal to act as modulator, or nil to use one of the built-in signals (sinus multiplication or Hilbert transform, at the moment)
+
+ARGUMENT:: freq
+frequency of the modulator in Hz
+
+ARGUMENT:: mod_dist
+distortion ratio (0-1) of the modulator
+
+ARGUMENT:: diode_mul
+the diode is implemented as (mod_in.abs * diode_mul) - diode_add
+
+ARGUMENT:: diode_add
+see diode_mul
+
+ARGUMENT:: mix_diode
+crossfade between mathematical modulator (sinusoidal) or analog diode simulation
+
+ARGUMENT:: os_mod
+0: no oversampling on the modulator. 1: 4 times oversampling. any number in between: cross-fade
+
+ARGUMENT:: os_mul
+0: no oversampling on the ring-modulation. 1: 4 times oversampling. any number in between: cross-fade
+
+ARGUMENT:: mix_wavesh
+0: no wave-shaping, a mathematical ring-modulation is applied (Hilbert transform). 1: the waveshaped modulator is used. values in between cross-fade
+
+ARGUMENT:: drywet
+0: the original singnal to be modulated. 1: the modulated signal. in between: crossfade.
+
+returns::
+The ring-modulated audio.
+
+
+INSTANCEMETHODS::
+
+
+EXAMPLES::
+
+code::
+(
+a = { |sourcefreq=440, modfreq=210|
+    var in = Saw.ar(sourcefreq);
+    var mod_in = Saw.ar(modfreq);
+    RingModDiodeSC.ar(in, mod_in, freq:modfreq, mix_diode:MouseX.kr(0, 1), mix_wavesh:MouseY.kr(0, 1));
+}.play
+)
+
+a.autogui;
+::
