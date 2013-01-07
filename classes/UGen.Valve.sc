@@ -1,4 +1,8 @@
 Valve {
+    /*
+    A Pseudo Ugen to simulate the action of a valve in a trumpet
+
+    */
     *ar {|in, state, dist1=0, dist0=0.01, i_c=343|
         /*
         in: audio to pass through the valve
@@ -17,17 +21,32 @@ Valve {
 }
 
 SelectX2 {
+    /*
+    This is just a shortcut for Select.ar(which, [if0, if1]) to avoid encapsulating
+    the signals in an array so that it works with the _ notation.
+
+    Example
+    =======
+
+    signal !> SelectX2.ar(which, _, Silence.ar)
+    */
     *ar {|which, a0, a1|
         ^SelectX.ar(which, [a0, a1]);
     }
     *kr {|which , a0, a1|
         ^SelectX.kr(which, [a0, a1]);
+    }
 }
 
 DelayConst {
+    /*
+    This is just a shortcut for DelayN where we dont want to change the delay time
+    Useful for waveguide simulation
+    */
     *ar {|in, time|
         ^DelayN.ar(in, time, time);
     }
     *kr {|in, time|
         ^DelayN.kr(in, time, time);
+    }
 }

@@ -16,33 +16,33 @@ ETests {
         ^switch( mod,
     			\s,      { other.apply(this) },  // serial, the default
     			\serial, { other.apply(this) },
-    			\p,   { [this, this => other] }, // parallel, carry the original 
-    			\par, { [this, this => other] }, 
+    			\p,   { [this, this => other] }, // parallel, carry the original
+    			\par, { [this, this => other] },
         )
-	} 
+	}
     !> {|other, mod=\s|
 	    ^switch( mod,
     			\s,      { other.apply(this) },  // serial, the default
     			\serial, { other.apply(this) },
-    			\p,   { [this, this => other] }, // parallel, carry the original 
-    			\par, { [this, this => other] }, 
+    			\p,   { [this, this => other] }, // parallel, carry the original
+    			\par, { [this, this => other] },
     	)
 	}
 	!< {|other|
 	    ^other.applyOneToMany(this);
 	}
-	
+
     <! {|other|
         ^( other !> this );
     }
-    
+
     >! {|other|
         ^( other !< this );
     }
-	
+
     mix {
 	    ^(Mix(this));
-    } 
+    }
 
 	arity {
 		^0
@@ -50,13 +50,13 @@ ETests {
 	apply {|x|
 		^this.value(x)
 	}
-	
+
 	par {|other|
 		^[this, other]
 	}
-	
-}   
-                                     
+
+}
+
 
 + SequenceableCollection {
 	=> { |other|
@@ -71,16 +71,16 @@ ETests {
 			^(this.copy.slotPut(which, out))
 		}
 	}
-	!< { |other| ^other.apply_distribute(*this) }
-	
+	!< { |other| ^other.apply_distribute(*this) }
+
 	apply_distribute{ |xs|
 	    "error".postln
 	}
-	
-	applyOneToMany{ |obj| 
+
+	applyOneToMany{ |obj|
 	    if( obj.isKindOf(SequenceableCollection) ){
 	       ^this.apply_distribute(obj);
-	    }{  // else 
+	    }{  // else
 	       ^this.collect{ |x| x.apply(obj) };
 	    };
 	}
@@ -106,7 +106,7 @@ ETests {
 	}
 	doesChannelExpansion {
 		if( this.def.selectors.isNil, {^false});
-		^this.def.selectors.any 
+		^this.def.selectors.any
 			{|x| x.asClass.superclasses.includes(UGen)}
 	}
 }
@@ -122,7 +122,7 @@ ETests {
         );
         ^{ |...args| this.values(*([obj] ++ args)) };
     }
-        
+
 	apply_distribute {|...seq|
 		var tmp, arity;
 		arity = this.arity;
@@ -136,24 +136,16 @@ ETests {
 			^( [this.value(*seq[..arity])] ++ seq[arity..] );
 		};
 	}
-	
+
 	applyOneToMany { |obj|
 	    ^this.value(*Array.fill(this.arity, obj));
 	}
 }
 
-/*
-+ Synth {
-    put {|other, val|
-        this.set(other, val)
-    }
-}
-*/ 
-
 + Mix {
     *apply {|array|
         ^Mix(array);
-        
+
     }
 }
 
@@ -182,8 +174,5 @@ ETests {
         ^this.new(seq);
     }
 }
-		
-
-		
 
 // TODO: fix channel expansion in UGens

@@ -40,21 +40,26 @@ BCF {
     *fader {|num, preset=1|
         ^[p_faders_ch[preset - 1][num - 1], p_faders_cc[preset-1][num-1]];
     }
-    
-    *fd {|num, preset=1|
-        ^p_faders_cc[preset - 1][num - 1];
+    *fader_cc {|num, preset=1|
+        ^BCF.fader(num, preset)[1];
     }
-    *kn {|num, group=1, preset=1|
-        ^p_knobs_cc[preset-1][group-1][num-1];
+    *fader_chan {|num, preset=1|
+        ^BCF.fader(num, preset)[0];
     }
+
     *knob {|num, group=1, preset=1|
         ^[p_knobs_ch[preset-1][group-1][num-1], p_knobs_cc[preset-1][group-1][num-1]];
     }
-    *button {|num, group=1, preset=1|
+    *button {|num, group=1, preset=1, row=\lower|
+        if( row==\upper ) { num = num + 8; };
+        num = num.clip(1, 16);
         ^[p_buttons_ch[preset-1][group-1][num-1], p_buttons_cc[preset-1][group-1][num-1]];
     }
-    *bt {|num, group=1, preset=1|
-        ^p_buttons_cc[preset-1][group-1][num-1];
+    *button_cc {|num, group=1, preset=1, row=\lower|
+        ^BCF.button(num, group, preset, row)[1];
+    }
+    *button_chan {|num, group=1, preset=1, row=\lower|
+        ^BCF.button(num, group, preset, row)[0];
     }
     *first_cc {
 	    ^this.fd(1);
