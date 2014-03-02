@@ -58,6 +58,22 @@ LOSER_WaveShapeDistOS {
         ^( DownSample.ar(sig) );
     }
 }
+
+LOSER_WaveShapeDist2 {
+    *ar { |sig, amount=0|
+        ^LOSER_WaveShapeDist.ar(LOSER_WaveShapeDist.ar(sig, amount), amount);
+    }
+}
+
+LOSER_WaveShapeDist2OS {
+    *ar { |sig, amount=0|
+        sig = UpSample.ar(sig);
+        sig = LOSER_WaveShapeDist2.ar(sig, amount);
+        ^( DownSample.ar(sig) );
+    }
+}
+
+
 /*
 // (C) 2007, Michael Gruhn.
 
@@ -77,3 +93,4 @@ spl0 = (1+foo)*spl0/(1+foo*abs(spl0));
 spl1 = (1+foo)*spl1/(1+foo*abs(spl1));
 
 */
+

@@ -2,7 +2,10 @@ TextmateResponder {
 	classvar <>filename;
 	*initClass {
 		StartUp.add {
-			filename = "TEXTMATE_SC3_BRIDGE_FILE".getenv.standardizePath;
+			filename = "TEXTMATE_SC3_BRIDGE_FILE".getenv;
+			if( filename.notNil ) {
+				filename = filename.starndardizePath;
+			}
 		}
 	}
 	*writeArray {|array|

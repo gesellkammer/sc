@@ -14,14 +14,6 @@ DoneAction {
     *freeGroup { ^14 }
 }
 
-AddAction {
-    *head   { ^ \addToHead }
-    *tail   { ^ \addToTail }
-    *after  { ^ \addAfter  }
-    *before { ^ \addBefore }
-    *replace{ ^ \addReplace}
-}
-
 C {
 	*doneNothing { ^0 }
     *donePause   { ^1}
@@ -36,10 +28,9 @@ C {
     *doneFreeThisAndPauseNext { ^10 }
     *doneFreeNodesInGroup { ^13 }
     *doneFreeGroup { ^14 }
-    
+
     *bufrdCubic      { ^4 }
     *bufrdNoInterpol { ^1 }
     *bufrdLinear     { ^2 }
-    
-}
 
+}
