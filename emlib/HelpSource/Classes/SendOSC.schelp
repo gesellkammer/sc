@@ -1,0 +1,66 @@
+TITLE:: SendOSC
+summary:: A mixture of Poll and SendTrig
+categories:: UGens>Info
+related:: Classes/SendTrig, Classes/Poll, etc.
+
+DESCRIPTION::
+Like Poll, but sends OSC instead of printing to the post window.
+
+
+CLASSMETHODS::
+
+METHOD:: kr
+Poll the 'in' signal and send it via OSC
+
+ARGUMENT:: in
+The signal you want to send via OSC
+
+ARGUMENT:: port
+The OSC port
+
+ARGUMENT:: path
+The OSC path
+
+ARGUMENT:: label
+If given, the message will be prepended with the label (see example)
+
+ARGUMENT:: trig
+A trigger to control when the signal is polled and the message
+sent via OSC. If not given, it defaults to:
+
+audio   --> Impulse.kr(8)
+control --> Changed.kr(signal)
+
+returns::
+The signal is returned, so this UGen can be inserted
+at any part of a processing chain without having side-effects
+
+
+INSTANCEMETHODS::
+
+
+EXAMPLES::
+
+code::
+(
+// This will send the amplitude of the signal to the port 3456 to the
+// path /noise/amp, 10 times per second, without you having to
+// set anything at the language
+a = {
+	var noise = WhiteNoise.ar(0.5);
+	var amp = Amplitude.ar(noise);
+	SendOSC.kr(amp, port:3456, path:"/noise/amp", trig:Impulse.kr(10));
+	Out.ar(0, noise);
+}.play;
+)
+
+(
+{
+	WhiteNoise.ar(0.5)
+	!> Amplitude.kr(_)
+	!> SendOSC.kr(_, port:3456, path: "/info", label:"noise");
+	!> Out.ar(0, _);
+}.play
+)
+
+::
