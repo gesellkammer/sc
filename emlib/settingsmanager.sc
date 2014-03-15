@@ -61,7 +61,19 @@ EM_SettingsManager {
 
     stop {
         this.save;
-        persist_task.stop;
-        persist_task = nil;
+		if( persist_task.notNil ) {
+			persist_task.stop;
+			persist_task = nil;
+		};
     }
+
+	set {|key, value|
+		data[key] = value;
+	}
+
+	get {|key, default=nil|
+		var out = this.data[key];
+		out ? default;
+	}
+
 }

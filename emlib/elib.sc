@@ -430,6 +430,28 @@ PrBinaryAgent {
 	mmcRewind {
 		this.sysex(Int8Array(6).addAll([16rF0, 16r7F, 0, 6, 5, 16rF7]));
 	}
+	*newMatchingRegex {|regex|
+		var destinationIndex;
+		if( MIDIClient.destinations.isNil ) {
+			MIDIClient.init;
+		};
+		destinationIndex = MIDIClient.destinations.detectIndex {|dest|
+			regex.matchRegexp(dest.device)
+		};
+		if( destinationIndex.notNil ) {
+			^MIDIOut(destinationIndex, MIDIClient.destinations[destinationIndex].uid);
+		}
+	}
+	*newMatching {|first_letters|
+        var found = MIDIClient.destinations.select { |dest| dest.device includesStr: first_letters };
+        var dev;
+        if( found.size > 0 ) {
+            dev = found[0];
+            ^MIDIOut.newByName(dev.device, dev.name);
+        } {
+            ^nil;
+        };
+    }
 }
 
 + MIDIClient {
@@ -453,6 +475,7 @@ PrBinaryAgent {
         */
         var found = MIDIClient.getSourcesMatching(device, port);
         ^found[0];
+
     }
     *uidToName { |uid|
         /* convert a uid representing a midisource to its name */
@@ -474,20 +497,6 @@ PrBinaryAgent {
         ^mon;
     }
 }
-
-+ MIDIOut {
-    *newMatching {|first_letters|
-        var found = MIDIClient.destinations.select { |dest| dest.device includesStr: first_letters };
-        var dev;
-        if( found.size > 0 ) {
-            dev = found[0];
-            ^MIDIOut.newByName(dev.device, dev.name);
-        } {
-            ^nil;
-        };
-    }
-}
-
 
 + Synth {
     synthDef {
