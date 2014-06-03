@@ -5,10 +5,10 @@ func = {|freq=20, freqfine=0, duty=0.5, base=0.0, gain=1, lagratio=0.1|
 	var a0 = AudioIn.ar(1);
 	var a1 = AudioIn.ar(2);
 	var f = max(freq + freqfine, 0);
-	var env = LFPulse.ar(f, 0, duty) * gain
-			+ base  
-			| Lag.ar(_, 1/f * lagratio)
-			;
+	var env =(
+		LFPulse.ar(f, 0, duty) * gain
+			+ base
+	).lag(1/f * lagratio);
 	Out.ar(0, [a0*env, a1*env]);
 };
 
